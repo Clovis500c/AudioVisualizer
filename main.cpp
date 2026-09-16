@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <string.h>
+#include <format>
 
 // Window Config //
 constexpr int defaultWindowWidth = 800;
@@ -15,6 +16,7 @@ constexpr const char* windowsTitle = "Audio Visualizer";
 bool isMusicPlaying = false;
 const std::vector<std::string> supportedAudioFormats = { ".mp3", ".wav", ".ogg" };
 const char* currentMusicFilePath = nullptr;
+constexpr float MINUTE = 60.0f;
 
 // Visualizer UI Config //
 constexpr int rectWidth = 50;
@@ -34,14 +36,26 @@ bool isSupportedFormat(const std::string& extension) {
 	return false;
 }
 
-void LoadMusic(const char* filePath) {
+Music LoadMusic(const char* filePath) {
 #ifdef _DEBUG
 	printf("Loading music file: %s\n", filePath);
 #endif
 
+	Music music = LoadMusicStream(filePath);
+	PlayMusicStream(music);
 
-	isMusicPlaying = true;
-	currentMusicFilePath = filePath;
+	if (IsMusicValid(music)) {
+		isMusicPlaying = true;
+		currentMusicFilePath = filePath;
+	}
+	else {
+		isMusicPlaying = false;
+		currentMusicFilePath = nullptr;
+
+		printf("Failed to load music file: %s\n", filePath);
+	}
+
+	return music;
 }
 
 std::string getFileName(const std::string& path) {
@@ -54,6 +68,11 @@ std::string getFileName(const std::string& path) {
 	return path.substr(start, end - start);
 }
 
+std::string formatTime(float seconds) {
+	int total = (int)seconds;
+	return std::format("{:02}:{:02}", total / 60, total % 60);
+}
+
 int main() {
 	int windowsWidth = defaultWindowWidth;
 	int windowsHeight = defaultWindowHeight;
@@ -64,6 +83,8 @@ int main() {
 	InitAudioDevice();
 
 	SetTargetFPS(windowsFps);
+
+	Music music = {};
 
 	while (!WindowShouldClose()) {
 		if (IsWindowResized()) {
@@ -80,8 +101,13 @@ int main() {
 		ClearBackground(DARKGRAY);
 
 		if (isMusicPlaying) {
+			UpdateMusicStream(music);
+
 			const std::string musicFileName = getFileName(currentMusicFilePath);
-			const char* text = TextFormat("Now playing: %s", musicFileName.c_str());
+			const std::string musicTimePlayedText = formatTime(GetMusicTimePlayed(music));
+			const std::string musicLengthText = formatTime(GetMusicTimeLength(music));
+
+			const char* text = TextFormat("%s - %s / %s", musicFileName.c_str(), musicTimePlayedText.c_str(), musicLengthText.c_str());
 
 			DrawText(text, (windowsWidth - MeasureText(text, 20)) / 2, (windowsHeight - 200) / 2, 20, mainPageTextColor);
 		}
@@ -95,7 +121,7 @@ int main() {
 					const char* path = droppedFiles.paths[i];
 
 					if (FileExists(path) && isSupportedFormat(GetFileExtension(path))) {
-						LoadMusic(path);
+						music = LoadMusic(path);
 					}
 				}
 			}
@@ -103,6 +129,8 @@ int main() {
 
 		EndDrawing();
 	}
+
+	UnloadMusicStream(music);
 
 	CloseWindow();
 	CloseAudioDevice();
