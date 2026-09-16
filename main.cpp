@@ -1,20 +1,51 @@
-#include <stdio.h>
+#include <cstdio>
 #include <raylib.h>
+#include <cstdlib>
 
 // Window Config //
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define WINDOW_FPS 120
-#define WINDOW_TITLE "Audio Visualizer"
+constexpr int defaultWindowWidth = 800;
+constexpr int defaultWindowHeight = 600;
+constexpr int windowsFps = 120;
+constexpr const char* windowsTitle = "Audio Visualizer";
+
+// Visualizer UI Config //
+constexpr int rectWidth = 50;
+constexpr int rectHeight = 100;
+constexpr Color rectColor = RAYWHITE;
 
 int main() {
-	InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE);
+	int windowsWidth = defaultWindowWidth;
+	int windowsHeight = defaultWindowHeight;
 
-	SetTargetFPS(WINDOW_FPS);
+	SetConfigFlags(FLAG_WINDOW_RESIZABLE);
 
-	if (!WindowShouldClose()) {
-		
+	InitWindow(windowsWidth, windowsHeight, windowsTitle);
+
+	SetTargetFPS(windowsFps);
+
+	while (!WindowShouldClose()) {
+		if (IsWindowResized()) {
+			windowsWidth = GetScreenWidth();
+			windowsHeight = GetScreenHeight();
+
+#ifdef _DEBUG
+			printf("Window resized to: %d x %d\n", windowsWidth, windowsHeight);
+#endif
+
+		}
+
+		BeginDrawing();
+		ClearBackground(LIGHTGRAY);
+
+		int centerX = windowsWidth / 2;
+		int centerY = windowsHeight / 2;
+
+		DrawRectangle(centerX, centerY, rectWidth, rectHeight, rectColor);
+
+		EndDrawing();
 	}
 
-	return 0;
+	CloseWindow();
+
+	return EXIT_SUCCESS;
 }
