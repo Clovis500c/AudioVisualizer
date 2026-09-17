@@ -241,7 +241,12 @@ int main() {
 					}
 
 					music = LoadMusic(path);
-					AttachAudioStreamProcessor(music.stream, audioStreamCallback);
+
+					// Invalid music has no buffer
+					if (isMusicPlaying) {
+						AttachAudioStreamProcessor(music.stream, audioStreamCallback);
+					}
+
 					break;
 				}
 			}
