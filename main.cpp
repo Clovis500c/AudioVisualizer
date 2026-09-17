@@ -16,12 +16,25 @@ constexpr const char* windowsTitle = "Audio Visualizer";
 // Audio Config //
 bool isMusicPlaying = false;
 const std::vector<std::string> supportedAudioFormats = { ".mp3", ".wav", ".ogg" };
-const char* currentMusicFilePath = nullptr;
+std::string currentMusicFilePath;
 constexpr float MINUTE = 60.0f;
 float currentVolume = 0.0f;
 int currentAudioChannels = 2; // defaultValue
+constexpr int audioBins = 256;
+float audioBinValues[audioBins] = {};
 
-std::vector<int> audioElementsSizes = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }; // Example sizes for audio elements
+
+// Bars //
+struct Bar {
+	float currentValue = 0.0f;
+	float targetValue = 0.0f;
+};
+
+std::vector<Bar> bars;
+constexpr float barSmoothing = 0.2f;
+
+float peakValue = 0.01f;
+constexpr float peakDecay = 0.995f;
 
 // Visualizer UI Config //
 constexpr int visualizerElementWidth = 10;
@@ -59,7 +72,7 @@ Music LoadMusic(const char* filePath) {
 	}
 	else {
 		isMusicPlaying = false;
-		currentMusicFilePath = nullptr;
+		currentMusicFilePath.clear();
 
 		printf("Failed to load music file: %s\n", filePath);
 	}
@@ -86,30 +99,35 @@ void audioStreamCallback(void *bufferData, unsigned int frames)
 {
     float *buffer = (float *)bufferData; // cast to actual sample type
 
-	int totalElements = audioElementsSizes.size();
+	//int totalElements = audioElementsSizes.size();
 	int totalValue = frames * currentAudioChannels;
-	float sum = 0.0f;
+	//float sum = 0.0f;
 
-	for (int i = 0; i < totalValue; i++) {
-		sum += std::fabs(buffer[i]);
-	}
+	//for (int i = 0; i < totalValue; i++) {
+	//	sum += std::fabs(buffer[i]);
+	//}
 	
-	currentVolume = sum / totalValue;
+	//currentVolume = sum / totalValue;
+
+	int valuesPerBin = totalValue / audioBins;
+	if (valuesPerBin == 0) return;
+
+	for (int b = 0; b < audioBins; b++) {
+		float sum = 0.0f;
+		int start = b * valuesPerBin;
+
+		for (int i = start; i < start + valuesPerBin; i++) {
+			sum += std::fabs(buffer[i]);
+		}
+
+		audioBinValues[b] = sum / valuesPerBin;
+	}
 
 	return;
 }
 
 int elementsPossible(int windowsWidth) {
 	return (windowsWidth - visualizerElementPadding) / (visualizerElementWidth + visualizerElementPadding);
-}
-
-void updateElementsSizes(int newSize) {
-	if (audioElementsSizes.size() > newSize) {
-
-	}
-	else if (audioElementsSizes.size() < newSize) {
-
-	}
 }
 
 // Main //
@@ -154,45 +172,81 @@ int main() {
 			DrawText(text, (windowsWidth - MeasureText(text, 20)) / 2, (windowsHeight - 200) / 2, 20, mainPageTextColor);
 
 			// Bars
-			Color elementColor = RAYWHITE; // temporary
+			//Color elementColor = RAYWHITE; // temporary
 
 			int totalElements = elementsPossible(windowsWidth);
 			int elementsWidth = totalElements * visualizerElementWidth;
 			int gapsWdith = visualizerElementPadding * (totalElements - 1);
 			int spaceWidth = windowsWidth - elementsWidth - gapsWdith;
 			int startX = spaceWidth / 2;
-			int baseY = windowsHeight / 2 + 60;
+			int baseY = windowsHeight / 2 + 150;
+
+			if ((int)bars.size() != totalElements) {
+				bars.resize(totalElements);
+			}
+
+			// Bins per bar
+			int binsPerBar = audioBins / totalElements;
+			if (binsPerBar < 1) binsPerBar = 1;
+
+			float frameMax = 0.0f;
 
 			for (int i = 0; i < totalElements; i++) {
+				float sum = 0.0f;
+				int firstBin = i * binsPerBar;
+
+				for (int b = firstBin; b < firstBin + binsPerBar && b < audioBins; b++) {
+					sum += audioBinValues[b];
+				}
+
+				bars[i].targetValue = sum / binsPerBar;
+
+				// Smoothing
+				bars[i].currentValue += (bars[i].targetValue - bars[i].currentValue) * barSmoothing;
+
+				frameMax = std::fmaxf(frameMax, bars[i].currentValue);
+
+				float intensity = std::fminf(bars[i].currentValue / peakValue, 1.0f);
+
 				int posX = i * (visualizerElementWidth + visualizerElementPadding) + startX;
-
-				float centerIndex = totalElements / 2.0f;
-				float distance = std::fabs(i - centerIndex);
-				float centerProximity = 1.0f - (distance / centerIndex);
-				float elementHeight = (float)std::fabs((currentVolume * visualizerElementHeight) * centerProximity);
-
+				float elementHeight = intensity * visualizerElementHeight;
 				float posY = baseY - elementHeight;
 
-				printf("%f\n",elementHeight);
+				// Blue to red
+				Color elementColor = ColorFromHSV(240.0f - intensity * 240.0f, 1.0f, 1.0f);
 
-				DrawRectangle(posX, posY, visualizerElementWidth, elementHeight, elementColor);
+				DrawRectangle(posX, (int)posY, visualizerElementWidth, (int)elementHeight, elementColor);
 			}
+
+			// Peak
+			peakValue = std::fmaxf(frameMax, peakValue * peakDecay);
+			if (peakValue < 0.01f) peakValue = 0.01f;
 		}
 		else {
 			DrawText(mainPageText, (windowsWidth - MeasureText(mainPageText, 20)) / 2, (windowsHeight - 20) / 2, 20, mainPageTextColor);
+		}
 
-			if (IsFileDropped()) {
-				FilePathList droppedFiles = LoadDroppedFiles();
+		if (IsFileDropped()) {
+			FilePathList droppedFiles = LoadDroppedFiles();
 
-				for (unsigned int i = 0; i < droppedFiles.count; i++) {
-					const char* path = droppedFiles.paths[i];
+			for (unsigned int i = 0; i < droppedFiles.count; i++) {
+				const char* path = droppedFiles.paths[i];
 
-					if (FileExists(path) && isSupportedFormat(GetFileExtension(path))) {
-						music = LoadMusic(path);
-						AttachAudioStreamProcessor(music.stream, audioStreamCallback);
+				if (FileExists(path) && isSupportedFormat(GetFileExtension(path))) {
+					// Stop previous
+					if (isMusicPlaying) {
+						DetachAudioStreamProcessor(music.stream, audioStreamCallback);
+						StopMusicStream(music);
+						UnloadMusicStream(music);
 					}
+
+					music = LoadMusic(path);
+					AttachAudioStreamProcessor(music.stream, audioStreamCallback);
+					break;
 				}
 			}
+
+			UnloadDroppedFiles(droppedFiles);
 		}
 
 		EndDrawing();
